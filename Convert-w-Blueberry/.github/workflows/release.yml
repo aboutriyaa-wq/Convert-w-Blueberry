@@ -1,0 +1,36 @@
+name: Publish versioned trial
+on:
+  push:
+    branches: [main]
+    paths: [scripts/build-app.sh]
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  release:
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install media test dependency
+        run: command -v ffmpeg >/dev/null || brew install ffmpeg
+      - name: Build and test
+        run: |
+          ./scripts/test.sh
+          ./scripts/build-app.sh
+      - name: Verify trial bundle integrity
+        run: |
+          codesign --verify --deep --strict --verbose=2 'dist/Convert w Blueberry.app'
+          test -x 'dist/Convert w Blueberry.app/Contents/MacOS/ConvertWithBlueberry'
+          plutil -lint 'dist/Convert w Blueberry.app/Contents/Info.plist'
+      - name: Package and publish new version
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          VERSION=$(/usr/libexec/PlistBuddy -c 'Print CFBundleShortVersionString' 'dist/Convert w Blueberry.app/Contents/Info.plist')
+          if gh release view "v$VERSION" >/dev/null 2>&1; then
+            echo 'This version is already published; increment the version to publish changes.'
+            exit 0
+          fi
+          ditto -c -k --sequesterRsrc --keepParent 'dist/Convert w Blueberry.app' "dist/Convert-w-Blueberry-$VERSION-macOS.zip"
+          shasum -a 256 "dist/Convert-w-Blueberry-$VERSION-macOS.zip" > dist/SHA256SUMS.txt
+          gh release create "v$VERSION" "dist/Convert-w-Blueberry-$VERSION-macOS.zip" dist/SHA256SUMS.txt --target "$GITHUB_SHA" --title "Convert w Blueberry $VERSION · Developer trial" --notes 'Developer trial for macOS 26+. Ad-hoc signed, NOT Apple-notarized; macOS may block opening this trial. Download the ZIP, quit the previous version, and replace the app. Installation guide: https://sintaxerrorpvtltd.github.io/Convert-w-Blueberry/#download . Includes complete menu icons, corrected Sintax Error branding, continuous drag hover highlighting, per-application drag exclusions and automatic two-second notch dismissal. Internal non-file drags no longer trigger the wheel. See README for tested coverage and limits. Automatic installation is not supported yet.'

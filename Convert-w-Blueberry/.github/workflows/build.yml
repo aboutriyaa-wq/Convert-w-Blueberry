@@ -1,0 +1,30 @@
+name: macOS build and tests
+on:
+  workflow_dispatch:
+  push:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install media test dependency
+        run: command -v ffmpeg >/dev/null || brew install ffmpeg
+      - name: Website checks
+        run: |
+          node scripts/test-site.cjs
+          node scripts/test-desktop-site.cjs
+          node scripts/test-demo.cjs
+          node scripts/test-analytics.cjs
+      - name: Test
+        run: ./scripts/test.sh
+      - name: Build
+        run: ./scripts/build-app.sh
+      - name: Package trial
+        run: ditto -c -k --sequesterRsrc --keepParent "dist/Convert w Blueberry.app" dist/Convert-w-Blueberry-macOS.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Convert-w-Blueberry-macOS
+          path: dist/Convert-w-Blueberry-macOS.zip
